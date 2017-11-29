@@ -60,10 +60,10 @@ target_include_directories(purplepp PRIVATE
 # C++ libs
 target_include_directories(purplepp PRIVATE
         ${PURPLEPP_INCLUDE_DIRS}
-        # ${FMT_INCLUDE_DIRS}
+        ${FMT_INCLUDE_DIRS}
         )
 target_link_libraries(purplepp
         ${GLIB2_LIBS}
         purple
-        # fmt::fmt-header-only
+        fmt::fmt-header-only
         )

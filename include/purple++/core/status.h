@@ -28,9 +28,9 @@ public:
 	static status_primitive mood;
 	static status_primitive NUMBER;
 
-	uint8_t _get_value() const {
-		return _value;
-	}
+	uint8_t _get_value() const;
+
+	friend std::ostream& operator<< (std::ostream& os, status_primitive prim);
 };
 
 class status_type {

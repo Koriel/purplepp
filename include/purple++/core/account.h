@@ -5,6 +5,7 @@
 #pragma once
 
 #include <purple++/detail/util.h>
+#include <unordered_set>
 
 struct _PurpleAccount;
 struct _PurpleConversation;
@@ -20,6 +21,7 @@ class account {
 	impl_ptr<_PurpleAccount> _impl;
 	std::unique_ptr<connection> _connection;
 	std::function<conversation*()> _conv_factory;
+	std::unordered_set<conversation*> _conversations;
 
 	void set_connection(std::unique_ptr<connection> connection);
 	void set_factory(std::function<conversation*()> conv_factory);
@@ -40,11 +42,11 @@ public:
 	// for C-wrapping
 	_PurpleAccount* _get_impl() const;
 	static account* _get_wrapper(_PurpleAccount* impl);
-	void _create_conversation(_PurpleConversation* conv);
-	void _destroy_conversation(_PurpleConversation*);
+	void _create_conversation(_PurpleConversation* impl);
+	void _destroy_conversation(_PurpleConversation* impl);
 
 	// factory method
-	template <class Account, class Connection, class Conversation, class... Args> friend std::unique_ptr<account> make_account(Args... args);
+	template <class Account, class Connection, class Conversation, class... Args> friend std::unique_ptr<account> make_account(Args&& ...args);
 
 	// ui_ops
 	/** A buddy who is already on this account's buddy list added this account
@@ -89,7 +91,12 @@ public:
 };
 
 template <class Account, class Connection, class Conversation, class... Args>
-static std::unique_ptr<account> make_account(Args... args) {
+static std::unique_ptr<account> make_account(Args&& ...args) {
+	// check invariants
+	static_assert(std::is_base_of<account, Account>::value, "Account must be derived from purple::account");
+	static_assert(std::is_base_of<connection, Connection>::value, "Connection must be derived from purple::connection");
+	static_assert(std::is_base_of<conversation, Conversation>::value, "Conversation must be derived from purple::conversation");
+
 	auto ret = std::unique_ptr<account>(new Account(std::forward<Args>(args)...));
 	ret->set_connection(std::unique_ptr<Connection>(new Connection(*ret)));
 	ret->set_factory([](){

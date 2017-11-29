@@ -8,6 +8,7 @@
 #include <libpurple/conversation.h>
 
 #include <cassert>
+#include <fmt/ostream.h>
 
 namespace purplepp {
 
@@ -28,9 +29,7 @@ conversation* conversation::_get_wrapper(_PurpleConversation* impl) {
 void simple_conversation::write_conv(boost::string_view who, boost::string_view alias, boost::string_view message, time_t mtime) {
 	std::string name = alias.empty() ? who.empty() ? "<empty>" : who.to_string() : alias.to_string();
 
-	printf("write_conv: (%s) %s %s: %s\n", get_name().to_string().c_str(),
-		   purple_utf8_strftime("(%H:%M:%S)", localtime(&mtime)),
-		   name.c_str(), message);
+	fmt::print("write_conv: ({}) {} {}: {}\n", get_name(), purple_utf8_strftime("(%H:%M:%S)", localtime(&mtime)), name, message);
 }
 
 }

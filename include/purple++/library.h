@@ -22,6 +22,7 @@ public:
 	void init();
 	void add_account(std::unique_ptr<account> account);
 	void run_loop();
+	static void add_task(std::function<void()> task);
 
 	void set_debug(bool enabled);
 

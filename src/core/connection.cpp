@@ -8,6 +8,9 @@
 #include <libpurple/connection.h>
 #include <libpurple/account.h>
 
+#include <fmt/printf.h>
+#include <fmt/ostream.h>
+
 namespace purplepp {
 
 connection::connection(account& acc) : _impl(nullptr), _acc(acc) {
@@ -36,27 +39,27 @@ void connection::_trigger_signed_on() {
 
 
 void simple_connection::on_connect_progress(boost::string_view text, size_t step, size_t step_count) {
-	printf("on_connect_progress: %s, %zu/%zu\n", text.to_string().c_str(), step, step_count);
+	fmt::print("on_connect_progress: {}, {}/{}\n", text, step, step_count);
 }
 
 void simple_connection::on_connected() {
-	printf("on_connected\n");
+	fmt::print("on_connected\n");
 }
 
 void simple_connection::on_disconnected() {
-	printf("on_disconnected\n");
+	fmt::print("on_disconnected\n");
 }
 
 void simple_connection::on_notice(boost::string_view text) {
-	printf("on_notice [%s]\n", text.to_string().c_str());
+	fmt::print("on_notice [{}]\n", text);
 }
 
 void simple_connection::on_report_disconnect(boost::string_view text) {
-	printf("on_report_disconnect [%s]\n", text.to_string().c_str());
+	fmt::print("on_report_disconnect [{}]\n", text);
 }
 
 void simple_connection::on_report_disconnect_reason(int reason, boost::string_view text) {
-	printf("on_report_disconnect_reason: [%d, %s]\n", reason, text.to_string().c_str());
+	fmt::print("on_report_disconnect_reason: [{}, {}]\n", reason, text);
 }
 
 }

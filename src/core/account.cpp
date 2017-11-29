@@ -8,6 +8,7 @@
 #include <libpurple/account.h>
 #include <cassert>
 #include <purple++/core/conversation.h>
+#include <fmt/ostream.h>
 
 namespace purplepp {
 
@@ -57,37 +58,39 @@ account* account::_get_wrapper(_PurpleAccount* impl) {
 	return (account*)impl->ui_data;
 }
 
-void account::_create_conversation(_PurpleConversation* conv) {
-	detail::thread_local_cache<PurpleConversation*, conversation>::set(conv);
+void account::_create_conversation(_PurpleConversation* impl) {
+	detail::thread_local_cache<PurpleConversation*, conversation>::set(impl);
 
 	// returned pointer is automatically saved into conv->ui_data, so no need to save it somewhere
-	_conv_factory();
+	_conversations.insert(_conv_factory());
 }
 
-void account::_destroy_conversation(_PurpleConversation* conv) {
-	delete (conversation*)conv->ui_data;
-	conv->ui_data = nullptr;
+void account::_destroy_conversation(_PurpleConversation* impl) {
+	auto conv = (conversation*)impl->ui_data;
+	_conversations.erase(conv);
+	delete conv;
+	impl->ui_data = nullptr;
 }
 
 void simple_account::notify_added(const char* remote_user, const char* id, const char* alias, const char* message) {
-	printf("notife_added [%s, %s, %s, %s]\n", remote_user, id, alias, message);
+	fmt::print("notify_added [{}, {}, {}, {}]\n", remote_user, id, alias, message);
 }
 
 void simple_account::status_changed(const status& status) {
-	printf("status_changed [%d]\n", status.get_type().get_primitive()._get_value());
+	fmt::print("status_changed [{}]\n", status.get_type().get_primitive());
 }
 
 void simple_account::request_add(const char* remote_user, const char* id, const char* alias, const char* message) {
-	printf("request_add [%s, %s, %s, %s]\n", remote_user, id, alias, message);
+	fmt::print("request_add [{}, {}, {}, {}]\n", remote_user, id, alias, message);
 }
 
 void* simple_account::request_authorize(const char* remote_user, const char* id, const char* alias, const char* message, bool on_list, void* user_data) {
-	printf("request_authorize [%s, %s, %s, %s, %s]\n", remote_user, id, alias, message, on_list ? "true" : "false");
+	fmt::print("request_authorize [{}, {}, {}, {}, {}]\n", remote_user, id, alias, message, on_list ? "true" : "false");
 	return nullptr;
 }
 
 void simple_account::close_account_request(void* ui_handle) {
-	printf("close_account_request\n");
+	fmt::print("close_account_request\n");
 }
 
 }

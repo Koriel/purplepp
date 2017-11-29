@@ -7,11 +7,15 @@
 #include <purple++/core/saved_status.h>
 #include <purple++/core/account.h>
 #include <purple++/core/connection.h>
+#include <purple++/core/conversation.h>
 #include <purple++/detail/util.h>
+#include <fmt/printf.h>
 
 #include <libpurple/purple.h>
+
 #include <vector>
-#include <purple++/core/conversation.h>
+#include <mutex>
+#include <deque>
 
 namespace purplepp {
 
@@ -146,9 +150,8 @@ struct library::impl {
 		 * is used by stuff that depends on this ui, for example the ui-specific plugins. */
 		if (purple_core_init(UI_ID) == 0) {
 			/* Initializing the core failed. Terminate. */
-			fprintf(stderr,
-					"libpurple initialization failed. Dumping core.\n"
-							"Please report this!\n");
+			fmt::fprintf(stderr, "libpurple initialization failed. Dumping core.\n");
+			fmt::fprintf(stderr, "Please report this!\n");
 			abort();
 		}
 
@@ -173,10 +176,22 @@ struct library::impl {
 		conn._trigger_signed_on();
 	}
 
+	static void new_task_handler(void* ptr) {
+		fmt::print("Nothing called with a = {}\n", ptr);
+
+		using real_type = std::function<void()>;
+		auto* lambda = reinterpret_cast<real_type*>(ptr);
+		(*lambda)();
+		delete lambda;
+	}
+
 	void init_signals() {
 		static int handle;
 
 		purple_signal_connect(purple_connections_get_handle(), "signed-on", &handle, reinterpret_cast<PurpleCallback>(signed_on), nullptr);
+
+		purple_signal_register(purple_connections_get_handle(), "new-task", purple_marshal_VOID__POINTER, nullptr, 1, purple_value_new(PURPLE_TYPE_POINTER));
+		purple_signal_connect(purple_connections_get_handle(), "new-task", &handle, PURPLE_CALLBACK(new_task_handler), nullptr);
 	}
 };
 
@@ -209,6 +224,12 @@ void library::run_loop() {
 	g_main_loop_run(loop);
 }
 
+void library::add_task(std::function<void()> task) {
+	auto arg = new std::function<void()>(std::move(task));
+
+	purple_signal_emit(purple_connections_get_handle(), "new-task", arg);
+}
+
 void library::set_debug(bool enabled) {
 	_impl->debug_enabled = enabled;
 }
@@ -236,10 +257,10 @@ static void ui_init()
 				connection::_get_wrapper(gc).on_report_disconnect(text);
 			},
 			[](){
-				printf("network_connected\n");
+				fmt::print("network_connected\n");
 			},
 			[](){
-				printf("network_disconnected\n");
+				fmt::print("network_disconnected\n");
 			},
 			[](PurpleConnection *gc, PurpleConnectionError reason, const char *text) {
 				connection::_get_wrapper(gc).on_report_disconnect_reason((int)reason, text);
