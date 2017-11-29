@@ -8,17 +8,17 @@
 
 namespace purplepp {
 
-status_primitive status_primitive::unset(PURPLE_STATUS_UNSET);
-status_primitive status_primitive::offline(PURPLE_STATUS_OFFLINE);
-status_primitive status_primitive::available(PURPLE_STATUS_AVAILABLE);
-status_primitive status_primitive::unavailable(PURPLE_STATUS_UNAVAILABLE);
-status_primitive status_primitive::invisible(PURPLE_STATUS_INVISIBLE);
-status_primitive status_primitive::away(PURPLE_STATUS_AWAY);
-status_primitive status_primitive::extended_away(PURPLE_STATUS_EXTENDED_AWAY);
-status_primitive status_primitive::mobile(PURPLE_STATUS_MOBILE);
-status_primitive status_primitive::tune(PURPLE_STATUS_TUNE);
-status_primitive status_primitive::mood(PURPLE_STATUS_MOOD);
-status_primitive status_primitive::NUMBER(PURPLE_STATUS_NUM_PRIMITIVES);
+const status_primitive status_primitive::unset(PURPLE_STATUS_UNSET);
+const status_primitive status_primitive::offline(PURPLE_STATUS_OFFLINE);
+const status_primitive status_primitive::available(PURPLE_STATUS_AVAILABLE);
+const status_primitive status_primitive::unavailable(PURPLE_STATUS_UNAVAILABLE);
+const status_primitive status_primitive::invisible(PURPLE_STATUS_INVISIBLE);
+const status_primitive status_primitive::away(PURPLE_STATUS_AWAY);
+const status_primitive status_primitive::extended_away(PURPLE_STATUS_EXTENDED_AWAY);
+const status_primitive status_primitive::mobile(PURPLE_STATUS_MOBILE);
+const status_primitive status_primitive::tune(PURPLE_STATUS_TUNE);
+const status_primitive status_primitive::mood(PURPLE_STATUS_MOOD);
+const status_primitive status_primitive::NUMBER(PURPLE_STATUS_NUM_PRIMITIVES);
 
 uint8_t status_primitive::_get_value() const {
 	return _value;

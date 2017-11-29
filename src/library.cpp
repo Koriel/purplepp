@@ -309,7 +309,7 @@ static void ui_init()
 			nullptr,                      /* write_chat           */
 			nullptr,                      /* write_im             */
 			[](PurpleConversation *conv, const char *name, const char *alias, const char *message, PurpleMessageFlags flags, time_t mtime) { // write_conv
-				conversation::_get_wrapper(conv)->write_conv(name ? name : "", alias ? alias : "", message, mtime);
+				conversation::_get_wrapper(conv)->write_conv(name ? name : "", alias ? alias : "", message, flags, mtime);
 			},
 			nullptr,                      /* chat_add_users       */
 			nullptr,                      /* chat_rename_user     */

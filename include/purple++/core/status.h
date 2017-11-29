@@ -11,22 +11,23 @@ struct _PurpleStatusType;
 
 namespace purplepp {
 
+// instead of enum
 class status_primitive {
 	uint8_t _value;
 public:
 	/* implicit */ status_primitive(uint8_t value) : _value(value) {}
 
-	static status_primitive unset;
-	static status_primitive offline;
-	static status_primitive available;
-	static status_primitive unavailable;
-	static status_primitive invisible;
-	static status_primitive away;
-	static status_primitive extended_away;
-	static status_primitive mobile;
-	static status_primitive tune;
-	static status_primitive mood;
-	static status_primitive NUMBER;
+	static const status_primitive unset;
+	static const status_primitive offline;
+	static const status_primitive available;
+	static const status_primitive unavailable;
+	static const status_primitive invisible;
+	static const status_primitive away;
+	static const status_primitive extended_away;
+	static const status_primitive mobile;
+	static const status_primitive tune;
+	static const status_primitive mood;
+	static const status_primitive NUMBER;
 
 	uint8_t _get_value() const;
 
