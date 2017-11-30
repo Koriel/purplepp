@@ -16,6 +16,7 @@
 #include <vector>
 #include <mutex>
 #include <deque>
+#include <thread>
 
 namespace purplepp {
 
@@ -111,13 +112,14 @@ static PurpleEventLoopUiOps glib_eventloops =
 				nullptr
 		};
 
-struct library::impl {
+struct library_impl {
 	// TODO: setters for all this params in purplepp::library class
 	std::string custom_user_directory = ".purple";
 	bool debug_enabled = false;
 	std::string custom_plugin_path = "";
 	std::string plugin_save_pref = "/purple/purple-daemon/plugins/saved";
 	std::vector<std::unique_ptr<account>> accounts;
+	std::thread::id loop_thread_id;
 
 	void init() {
 		/* Set a custom user directory (optional) */
@@ -170,6 +172,36 @@ struct library::impl {
 		purple_pounces_load();
 	}
 
+	void run_loop() {
+		GMainLoop *loop = g_main_loop_new(nullptr, FALSE);
+
+		for (auto& acc : accounts) {
+			acc->connect();
+		}
+
+		loop_thread_id = std::this_thread::get_id();
+		g_main_loop_run(loop);
+	}
+
+	void init_signals() {
+		static int handle;
+
+		purple_signal_connect(purple_connections_get_handle(), "signed-on", &handle, reinterpret_cast<PurpleCallback>(signed_on), nullptr);
+
+		purple_signal_register(purple_connections_get_handle(), "new-task", purple_marshal_VOID__POINTER, nullptr, 1, purple_value_new(PURPLE_TYPE_POINTER));
+		purple_signal_connect(purple_connections_get_handle(), "new-task", &handle, PURPLE_CALLBACK(new_task_handler), nullptr);
+	}
+
+	void add_task(std::function<void()> task) {
+		if (std::this_thread::get_id() == loop_thread_id) {
+			task();
+		}
+		else {
+			auto arg = new std::function<void()>(std::move(task));
+			purple_signal_emit(purple_connections_get_handle(), "new-task", arg);
+		}
+	}
+
 	static void signed_on(PurpleConnection *gc)
 	{
 		auto& conn = connection::_get_wrapper(gc);
@@ -184,54 +216,42 @@ struct library::impl {
 		(*lambda)();
 		delete lambda;
 	}
-
-	void init_signals() {
-		static int handle;
-
-		purple_signal_connect(purple_connections_get_handle(), "signed-on", &handle, reinterpret_cast<PurpleCallback>(signed_on), nullptr);
-
-		purple_signal_register(purple_connections_get_handle(), "new-task", purple_marshal_VOID__POINTER, nullptr, 1, purple_value_new(PURPLE_TYPE_POINTER));
-		purple_signal_connect(purple_connections_get_handle(), "new-task", &handle, PURPLE_CALLBACK(new_task_handler), nullptr);
-	}
 };
 
-library::library() : _impl(new impl()) {
-
+library_impl& get_library_impl() {
+	static library_impl impl;
+	return impl;
 }
 
-library::~library() noexcept = default;
-
 void library::init() {
-	_impl->init();
-	_impl->init_signals();
+	auto& impl = get_library_impl();
+
+	impl.init();
+	impl.init_signals();
 
 	purplepp::saved_status status("Online", status_primitive::available);
 	status.activate();
 }
 
 void library::add_account(std::unique_ptr<account> account) {
+	auto& impl = get_library_impl();
+
 	account->set_enabled(UI_ID, true);
-	_impl->accounts.push_back(std::move(account));
+	impl.accounts.push_back(std::move(account));
 }
 
 void library::run_loop() {
-	GMainLoop *loop = g_main_loop_new(nullptr, FALSE);
+	auto& impl = get_library_impl();
 
-	for (auto& acc : _impl->accounts) {
-		acc->connect();
-	}
-
-	g_main_loop_run(loop);
+	impl.run_loop();
 }
 
 void library::add_task(std::function<void()> task) {
-	auto arg = new std::function<void()>(std::move(task));
-
-	purple_signal_emit(purple_connections_get_handle(), "new-task", arg);
+	get_library_impl().add_task(std::move(task));
 }
 
 void library::set_debug(bool enabled) {
-	_impl->debug_enabled = enabled;
+	get_library_impl().debug_enabled = enabled;
 }
 
 static void ui_init()

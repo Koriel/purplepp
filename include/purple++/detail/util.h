@@ -17,6 +17,11 @@
 	cls(const cls&) = delete; \
 	cls& operator=(const cls&) = delete;
 
+#define PURPLEPP_STATIC_CLASS(cls) \
+	cls() = delete; \
+	~cls() = delete; \
+	PURPLEPP_NON_COPYABLE_NON_MOVABLE(cls)
+
 namespace purplepp {
 
 namespace detail {
