@@ -12,6 +12,7 @@ add_library(purplepp
         core/status.cpp
         core/saved_status.cpp
         core/conversation.cpp
+        core/blist.cpp
         detail/util.cpp
 
         # Headers for IDE
@@ -23,6 +24,7 @@ add_library(purplepp
         "${PURPLEPP_INCLUDE_DIRS}/purple++/core/status.h"
         "${PURPLEPP_INCLUDE_DIRS}/purple++/core/saved_status.h"
         "${PURPLEPP_INCLUDE_DIRS}/purple++/core/conversation.h"
+        "${PURPLEPP_INCLUDE_DIRS}/purple++/core/blist.h"
         "${PURPLEPP_INCLUDE_DIRS}/purple++/detail/util.h"
 
         )

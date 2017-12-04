@@ -20,11 +20,14 @@ class account {
 	// members
 	impl_ptr<_PurpleAccount> _impl;
 	std::unique_ptr<connection> _connection;
-	std::function<conversation*()> _conv_factory;
-	std::unordered_set<conversation*> _conversations;
+	std::function<std::unique_ptr<conversation>()> _conv_factory;
+
+	// TODO: make thread-safe (weak_ptr)
+	// TODO: make map: name -> conversation
+	//std::unordered_set<conversation*> _conversations;
 
 	void set_connection(std::unique_ptr<connection> connection);
-	void set_factory(std::function<conversation*()> conv_factory);
+	void set_factory(std::function<std::unique_ptr<conversation>()> conv_factory);
 public:
 	explicit account(boost::string_view username, boost::string_view protocol_id);
 	virtual ~account() noexcept = default;
@@ -39,11 +42,15 @@ public:
 	connection& get_connection();
 	boost::string_view get_username();
 
+	bool is_connected() const;
+
+	void apply_to_conversation(boost::string_view name, std::function<void(conversation&)> cb) const;
+
 	// for C-wrapping
 	_PurpleAccount* _get_impl() const;
 	static account* _get_wrapper(_PurpleAccount* impl);
-	void _create_conversation(_PurpleConversation* impl);
-	void _destroy_conversation(_PurpleConversation* impl);
+	static std::unique_ptr<conversation> _create_conversation(_PurpleConversation* impl);
+	//void _destroy_conversation(_PurpleConversation* impl);
 
 	// factory method
 	template <class Account, class Connection, class Conversation, class... Args> friend std::unique_ptr<account> make_account(Args&& ...args);
@@ -100,7 +107,7 @@ static std::unique_ptr<account> make_account(Args&& ...args) {
 	auto ret = std::unique_ptr<account>(new Account(std::forward<Args>(args)...));
 	ret->set_connection(std::unique_ptr<Connection>(new Connection(*ret)));
 	ret->set_factory([](){
-		return new Conversation;
+		return std::unique_ptr<Conversation>(new Conversation);
 	});
 	return ret;
 }

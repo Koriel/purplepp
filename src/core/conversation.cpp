@@ -12,6 +12,7 @@
 #include <conversation.h>
 #include <fmt/printf.h>
 #include <purple++/core/account.h>
+#include <purple++/library.h>
 
 namespace purplepp {
 
@@ -117,7 +118,10 @@ conv_im::conv_im(_PurpleConvIm* impl) : _impl(impl) {
 }
 
 void conv_im::send(boost::string_view message) {
-	purple_conv_im_send(_impl, message.to_string().c_str());
+	library::add_task([=] {
+		PURPLEPP_ASSERT_IS_LOOP_THREAD();
+		purple_conv_im_send(_impl, message.to_string().c_str());
+	});
 }
 
 /** conv_chat */
@@ -127,29 +131,42 @@ conv_chat::conv_chat(_PurpleConvChat* impl) : _impl(impl) {
 }
 
 void conv_chat::send(boost::string_view message) {
-	purple_conv_chat_send(_impl, message.to_string().c_str());
+	library::add_task([=] {
+		PURPLEPP_ASSERT_IS_LOOP_THREAD();
+		purple_conv_chat_send(_impl, message.to_string().c_str());
+	});
 }
 
 /** conversation */
 
 conversation::conversation() {
+	PURPLEPP_ASSERT_IS_LOOP_THREAD();
+
 	_impl = detail::thread_local_cache<PurpleConversation*, conversation>::get();
 	_impl->ui_data = this;
 }
 
 boost::string_view conversation::get_name() const {
-	return purple_conversation_get_name(_impl);
+	PURPLEPP_ASSERT_IS_LOOP_THREAD();
+
+	return detail::to_view(_impl->name);
 }
 
 conversation_type conversation::get_type() const {
+	PURPLEPP_ASSERT_IS_LOOP_THREAD();
+
 	return _impl->type;
 }
 
 account* conversation::get_account() const {
+	PURPLEPP_ASSERT_IS_LOOP_THREAD();
+
 	return account::_get_wrapper(_impl->account);
 }
 
 void conversation::send(boost::string_view message) {
+	PURPLEPP_ASSERT_IS_LOOP_THREAD();
+
 	switch (_impl->type) {
 		case PURPLE_CONV_TYPE_CHAT:
 			conv_chat{ _impl->u.chat }.send(message);
@@ -166,11 +183,15 @@ void conversation::send(boost::string_view message) {
 }
 
 conversation* conversation::_get_wrapper(_PurpleConversation* impl) {
+	PURPLEPP_ASSERT_IS_LOOP_THREAD();
+
 	assert(impl->ui_data);
 	return (conversation*)impl->ui_data;
 }
 
 void simple_conversation::write_conv(boost::string_view who, boost::string_view alias, boost::string_view message, message_flags flags, time_t mtime) {
+	PURPLEPP_ASSERT_IS_LOOP_THREAD();
+
 	std::string name = alias.empty() ? who.empty() ? "<empty>" : who.to_string() : alias.to_string();
 
 	fmt::print("write_conv {}: ({}) {} {}: {}\n", flags, get_name(), purple_utf8_strftime("(%H:%M:%S)", localtime(&mtime)), name, message);

@@ -17,9 +17,15 @@ public:
 	static void init();
 	static void add_account(std::unique_ptr<account> account);
 	static void run_loop();
+	static void stop_loop();
+	static void wait_loop();
 	static void add_task(std::function<void()> task);
 
 	static void set_debug(bool enabled);
+
+	static account* find_account(boost::string_view login);
+
+	static std::thread::id get_loop_thread_id();
 
 	PURPLEPP_STATIC_CLASS(library);
 };

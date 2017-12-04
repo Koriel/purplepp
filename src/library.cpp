@@ -8,6 +8,7 @@
 #include <purple++/core/account.h>
 #include <purple++/core/connection.h>
 #include <purple++/core/conversation.h>
+#include <purple++/core/blist.h>
 #include <purple++/detail/util.h>
 #include <fmt/printf.h>
 
@@ -15,8 +16,9 @@
 
 #include <vector>
 #include <mutex>
-#include <deque>
+#include <list>
 #include <thread>
+#include <unordered_map>
 
 namespace purplepp {
 
@@ -113,13 +115,25 @@ static PurpleEventLoopUiOps glib_eventloops =
 		};
 
 struct library_impl {
+	enum class library_state {
+		none,
+		loop_run,
+		loop_requested_stop,
+		loop_stopped
+	};
+
 	// TODO: setters for all this params in purplepp::library class
 	std::string custom_user_directory = ".purple";
 	bool debug_enabled = false;
 	std::string custom_plugin_path = "";
 	std::string plugin_save_pref = "/purple/purple-daemon/plugins/saved";
-	std::vector<std::unique_ptr<account>> accounts;
+	std::unordered_map<std::string, std::unique_ptr<account>> accounts;
 	std::thread::id loop_thread_id;
+	GMainLoop *loop = nullptr;
+	volatile library_state state = library_state::none;
+
+	std::list<std::function<void()>> tasks;
+	std::mutex tasks_mutex;
 
 	void init() {
 		/* Set a custom user directory (optional) */
@@ -162,7 +176,7 @@ struct library_impl {
 		purple_blist_load();
 
 		/* Load the preferences. */
-		purple_prefs_load();
+		//purple_prefs_load();
 
 		/* Load the desired plugins. The client should save the list of loaded plugins in
 		 * the preferences using purple_plugins_save_loaded(plugin_save_pref) */
@@ -173,14 +187,61 @@ struct library_impl {
 	}
 
 	void run_loop() {
-		GMainLoop *loop = g_main_loop_new(nullptr, FALSE);
+		loop = g_main_loop_new(nullptr, FALSE);
 
 		for (auto& acc : accounts) {
-			acc->connect();
+			acc.second->connect();
 		}
 
+		fmt::print(stderr, "Loop ran in thread {}\n", std::this_thread::get_id());
+
 		loop_thread_id = std::this_thread::get_id();
+		state = library_state::loop_run;
 		g_main_loop_run(loop);
+
+		// after getting stop_loop
+		//purple_timeout_remove(loop_timer);
+		g_main_loop_unref(loop);
+		loop = nullptr;
+		state = library_state::loop_stopped;
+	}
+
+	void stop_loop() {
+		state = library_state::loop_requested_stop;
+	}
+
+	void wait_loop() {
+		while (state != library_state::loop_stopped) {
+			std::this_thread::sleep_for(std::chrono::milliseconds{ 1 });
+		}
+	}
+
+	bool on_tick() {
+		// copy all tasks
+		decltype(tasks) copy_tasks;
+		{
+			std::lock_guard<std::mutex> _{ tasks_mutex };
+			if (!tasks.empty()) {
+				copy_tasks = std::move(tasks);
+			}
+		}
+
+		for (auto& task : copy_tasks) {
+			task();
+		}
+
+		if (state == library_state::loop_requested_stop) {
+			fmt::print(stderr, "Calling g_main_loop_quit..\n");
+			g_main_loop_quit(loop);
+			return false;
+		}
+
+		return true;
+	}
+
+	struct PurpleBuddy;
+	static void buddy_status_changed(PurpleBuddy *buddy, PurpleStatus *old_status, PurpleStatus *status) {
+		fmt::print("buddy_status_changed: {}, {}", (void*)old_status, (void*)status);
 	}
 
 	void init_signals() {
@@ -188,33 +249,40 @@ struct library_impl {
 
 		purple_signal_connect(purple_connections_get_handle(), "signed-on", &handle, reinterpret_cast<PurpleCallback>(signed_on), nullptr);
 
-		purple_signal_register(purple_connections_get_handle(), "new-task", purple_marshal_VOID__POINTER, nullptr, 1, purple_value_new(PURPLE_TYPE_POINTER));
-		purple_signal_connect(purple_connections_get_handle(), "new-task", &handle, PURPLE_CALLBACK(new_task_handler), nullptr);
+		//purple_signal_connect(purple_blist_get_handle(), "buddy-status-changed", &handle, reinterpret_cast<PurpleCallback>(buddy_status_changed), nullptr);
+
+		//purple_signal_register(purple_connections_get_handle(), "new-task", purple_marshal_VOID__POINTER, nullptr, 1, purple_value_new(PURPLE_TYPE_POINTER));
+		//purple_signal_connect(purple_connections_get_handle(), "new-task", &handle, PURPLE_CALLBACK(new_task_handler), nullptr);
+
+		purple_timeout_add(1, [](gpointer impl){
+			return ((library_impl*)impl)->on_tick() ? 1 : 0;
+		}, this);
 	}
 
 	void add_task(std::function<void()> task) {
 		if (std::this_thread::get_id() == loop_thread_id) {
+			fmt::print(stderr, "Executing task immediately.. {}\n", std::this_thread::get_id());
 			task();
 		}
 		else {
-			auto arg = new std::function<void()>(std::move(task));
-			purple_signal_emit(purple_connections_get_handle(), "new-task", arg);
+			fmt::print(stderr, "Executing task delayed.. {}\n", std::this_thread::get_id());
+
+			std::lock_guard<std::mutex> _{ tasks_mutex };
+			tasks.push_back(std::move(task));
+			fmt::print("Tasks count: {}\n", tasks.size());
+			//purple_signal_emit(purple_connections_get_handle(), "new-task", arg);
 		}
+	}
+
+	account* find_account(boost::string_view login) {
+		auto it = accounts.find(login.to_string());
+		return it == accounts.end() ? nullptr : it->second.get();
 	}
 
 	static void signed_on(PurpleConnection *gc)
 	{
 		auto& conn = connection::_get_wrapper(gc);
 		conn._trigger_signed_on();
-	}
-
-	static void new_task_handler(void* ptr) {
-		fmt::print("Nothing called with a = {}\n", ptr);
-
-		using real_type = std::function<void()>;
-		auto* lambda = reinterpret_cast<real_type*>(ptr);
-		(*lambda)();
-		delete lambda;
 	}
 };
 
@@ -237,13 +305,20 @@ void library::add_account(std::unique_ptr<account> account) {
 	auto& impl = get_library_impl();
 
 	account->set_enabled(UI_ID, true);
-	impl.accounts.push_back(std::move(account));
+	auto username = account->get_username().to_string();
+	impl.accounts[std::move(username)] = std::move(account);
 }
 
 void library::run_loop() {
-	auto& impl = get_library_impl();
+	get_library_impl().run_loop();
+}
 
-	impl.run_loop();
+void library::stop_loop() {
+	get_library_impl().stop_loop();
+}
+
+void library::wait_loop() {
+	get_library_impl().wait_loop();
 }
 
 void library::add_task(std::function<void()> task) {
@@ -252,6 +327,14 @@ void library::add_task(std::function<void()> task) {
 
 void library::set_debug(bool enabled) {
 	get_library_impl().debug_enabled = enabled;
+}
+
+account* library::find_account(boost::string_view login) {
+	return get_library_impl().find_account(login);
+}
+
+std::thread::id library::get_loop_thread_id() {
+	return get_library_impl().loop_thread_id;
 }
 
 static void ui_init()
@@ -321,15 +404,15 @@ static void ui_init()
 
 	static PurpleConversationUiOps conv_uiops {
 			[](PurpleConversation *conv) { // create
-				account::_get_wrapper(conv->account)->_create_conversation(conv);
+				//account::_get_wrapper(conv->account)->_create_conversation(conv);
 			},
 			[](PurpleConversation *conv) { // destroy
-				account::_get_wrapper(conv->account)->_destroy_conversation(conv);
+				//account::_get_wrapper(conv->account)->_destroy_conversation(conv);
 			},
 			nullptr,                      /* write_chat           */
 			nullptr,                      /* write_im             */
 			[](PurpleConversation *conv, const char *name, const char *alias, const char *message, PurpleMessageFlags flags, time_t mtime) { // write_conv
-				conversation::_get_wrapper(conv)->write_conv(name ? name : "", alias ? alias : "", message, flags, mtime);
+				account::_create_conversation(conv)->write_conv(name ? name : "", alias ? alias : "", message, flags, mtime);
 			},
 			nullptr,                      /* chat_add_users       */
 			nullptr,                      /* chat_rename_user     */
@@ -347,6 +430,73 @@ static void ui_init()
 			nullptr                       /* reserved4         */
 	};
 	purple_conversations_set_ui_ops(&conv_uiops);
+
+	static PurpleBlistUiOps blist_uiops = {
+			nullptr, // void (*new_list)(PurpleBuddyList *list); /**< Sets UI-specific data on a buddy list. */
+			[](PurpleBlistNode *_node){
+				blist_node node{ _node };
+				fmt::print("[new_node] {}\n", blist_node{node});
+			}, // void (*new_node)(PurpleBlistNode *node); /**< Sets UI-specific data on a node. */
+			[](PurpleBuddyList *list){
+				fmt::print("show blist: {}\n", (void*)list);
+			}, // void (*show)(PurpleBuddyList *list);     /**< The core will call this when it's finished doing its core stuff */
+			nullptr, // void (*update)(PurpleBuddyList *list, PurpleBlistNode *node);       /**< This will update a node in the buddy list. */
+			nullptr, // void (*remove)(PurpleBuddyList *list, PurpleBlistNode *node);       /**< This removes a node from the list */
+			nullptr, // void (*destroy)(PurpleBuddyList *list);  /**< When the list is destroyed, this is called to destroy the UI. */
+			nullptr, // void (*set_visible)(PurpleBuddyList *list, gboolean show);            /**< Hides or unhides the buddy list */
+			[](PurpleAccount *account, const char *username, const char *group, const char *alias){
+				fmt::print("account: {}, username: {}, group: {}, alias: {}\n", account::_get_wrapper(account)->get_username(), username, group, alias);
+			}, // void (*request_add_buddy)(PurpleAccount *account, const char *username, const char *group, const char *alias);
+			[](PurpleAccount *account, PurpleGroup *group, const char *alias, const char *name){
+				fmt::print("account: {}, group: {}, alias: {}, name: {}\n", account::_get_wrapper(account)->get_username(), (void*)group, alias, name);
+			}, // void (*request_add_chat)(PurpleAccount *account, PurpleGroup *group, const char *alias, const char *name);
+			nullptr, // void (*request_add_group)(void);
+
+			/**
+			 * This is called when a node has been modified and should be saved.
+			 *
+			 * Implementation of this UI op is OPTIONAL. If not implemented, it will
+			 * be set to a fallback function that saves data to blist.xml like in
+			 * previous libpurple versions.
+			 *
+			 * @param node    The node which has been modified.
+			 *
+			 * @since 2.6.0.
+			 */
+			nullptr, // void (*save_node)(PurpleBlistNode *node);
+
+			/**
+			 * Called when a node is about to be removed from the buddy list.
+			 * The UI op should update the relevant data structures to remove this
+			 * node (for example, removing a buddy from the group this node is in).
+			 *
+			 * Implementation of this UI op is OPTIONAL. If not implemented, it will
+			 * be set to a fallback function that saves data to blist.xml like in
+			 * previous libpurple versions.
+			 *
+			 * @param node  The node which has been modified.
+			 * @since 2.6.0.
+			 */
+			nullptr, // void (*remove_node)(PurpleBlistNode *node);
+
+			/**
+			 * Called to save all the data for an account. If the UI sets this,
+			 * the callback must save the privacy and buddy list data for an account.
+			 * If the account is NULL, save the data for all accounts.
+			 *
+			 * Implementation of this UI op is OPTIONAL. If not implemented, it will
+			 * be set to a fallback function that saves data to blist.xml like in
+			 * previous libpurple versions.
+			 *
+			 * @param account  The account whose data to save. If NULL, save all data
+			 *                  for all accounts.
+			 * @since 2.6.0.
+			 */
+			nullptr, // void (*save_account)(PurpleAccount *account);
+
+			nullptr // void (*_purple_reserved1)(void);
+	};
+	purple_blist_set_ui_ops(&blist_uiops);
 }
 
 } // namespace purplepp

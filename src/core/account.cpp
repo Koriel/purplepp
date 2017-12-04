@@ -5,6 +5,7 @@
 #include <purple++/core/account.h>
 #include <purple++/core/connection.h>
 #include <purple++/core/status.h>
+#include <purple++/library.h>
 #include <libpurple/account.h>
 #include <cassert>
 #include <purple++/core/conversation.h>
@@ -22,7 +23,7 @@ void account::set_connection(std::unique_ptr<connection> connection) {
 	_connection = std::move(connection);
 }
 
-void account::set_factory(std::function<conversation*()> conv_factory) {
+void account::set_factory(std::function<std::unique_ptr<conversation>()> conv_factory) {
 	_conv_factory = std::move(conv_factory);
 }
 
@@ -39,6 +40,8 @@ void account::set_enabled(boost::string_view ui, bool value) {
 }
 
 void account::connect() {
+	assert(_impl.get());
+
 	purple_account_connect(_impl.get());
 }
 
@@ -50,6 +53,27 @@ boost::string_view account::get_username() {
 	return _impl->username;
 }
 
+bool account::is_connected() const {
+	return purple_account_is_connected(_impl.get()) != 0;
+}
+
+void account::apply_to_conversation(boost::string_view name, std::function<void(conversation&)> cb) const {
+	//purple_prpl_send_attention(_connection->_get_impl(), name.to_string().c_str(), 0);
+
+	library::add_task([=](){
+		PURPLEPP_ASSERT_IS_LOOP_THREAD();
+
+		fmt::print(stderr, "Executing task apply_to_conversation...\n");
+
+		//cb(*account::_create_conversation(purple_conversation_new(PURPLE_CONV_TYPE_IM, _impl.get(), name.to_string().c_str())));
+
+		auto conv = purple_find_conversation_with_account(PURPLE_CONV_TYPE_ANY, name.to_string().c_str(), _impl.get());
+		if (conv != nullptr) {
+			cb(*account::_create_conversation(conv));
+		}
+	});
+}
+
 _PurpleAccount* account::_get_impl() const {
 	return _impl.get();
 }
@@ -58,18 +82,10 @@ account* account::_get_wrapper(_PurpleAccount* impl) {
 	return (account*)impl->ui_data;
 }
 
-void account::_create_conversation(_PurpleConversation* impl) {
+std::unique_ptr<conversation> account::_create_conversation(_PurpleConversation* impl) {
 	detail::thread_local_cache<PurpleConversation*, conversation>::set(impl);
-
-	// returned pointer is automatically saved into conv->ui_data, so no need to save it somewhere
-	_conversations.insert(_conv_factory());
-}
-
-void account::_destroy_conversation(_PurpleConversation* impl) {
-	auto conv = (conversation*)impl->ui_data;
-	_conversations.erase(conv);
-	delete conv;
-	impl->ui_data = nullptr;
+	auto acc = account::_get_wrapper(impl->account);
+	return acc->_conv_factory();
 }
 
 void simple_account::notify_added(const char* remote_user, const char* id, const char* alias, const char* message) {

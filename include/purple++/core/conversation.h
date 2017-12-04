@@ -101,8 +101,10 @@ class conversation {
 	// non-owning
 	_PurpleConversation* _impl;
 
-public:
+protected:
 	conversation();
+
+public:
 	virtual ~conversation() = default;
 
 	// base API
@@ -116,6 +118,8 @@ public:
 
 	// ui_ops
 	virtual void write_conv(boost::string_view who, boost::string_view alias, boost::string_view message, message_flags flags, time_t mtime) = 0;
+
+	PURPLEPP_NON_COPYABLE_NON_MOVABLE(conversation);
 };
 
 class simple_conversation : public conversation {

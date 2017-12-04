@@ -33,6 +33,7 @@ public:
 
 	// internal
 	static connection& _get_wrapper(_PurpleConnection* impl);
+	_PurpleConnection* _get_impl() const;
 
 	// signals
 	void _trigger_signed_on();
@@ -46,6 +47,8 @@ public:
 	//virtual void on_network_connected() = 0;
 	//virtual void on_network_disconnected() = 0;
 	virtual void on_report_disconnect_reason(int reason, boost::string_view text) = 0;
+
+	PURPLEPP_NON_COPYABLE_NON_MOVABLE(connection);
 };
 
 class simple_connection : public connection {

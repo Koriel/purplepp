@@ -31,12 +31,15 @@ connection& connection::_get_wrapper(_PurpleConnection* impl) {
 	return conn;
 }
 
+_PurpleConnection* connection::_get_impl() const {
+	return _impl;
+}
+
 void connection::_trigger_signed_on() {
 	if (_signed_on_cb) {
 		_signed_on_cb(*this);
 	}
 }
-
 
 void simple_connection::on_connect_progress(boost::string_view text, size_t step, size_t step_count) {
 	fmt::print("on_connect_progress: {}, {}/{}\n", text, step, step_count);
