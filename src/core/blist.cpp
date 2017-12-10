@@ -6,6 +6,7 @@
 #include <libpurple/blist.h>
 #include <fmt/format.h>
 #include <fmt/ostream.h>
+#include <purple++/core/account.h>
 
 namespace purplepp {
 
@@ -47,6 +48,14 @@ boost::string_view buddy::get_alias() const {
 	PURPLEPP_ASSERT_IS_LOOP_THREAD();
 
 	return detail::to_view(_impl->alias);
+}
+
+account* buddy::get_account() const {
+	return account::_get_wrapper(_impl->account);
+}
+
+presence buddy::get_presence() const {
+	return { _impl->presence };
 }
 
 std::ostream& operator<<(std::ostream& os, const buddy& buddy) {
@@ -100,7 +109,7 @@ std::ostream& operator<<(std::ostream& os, const chat& chat) {
 /** blist_node */
 
 blist_node_type blist_node::get_type() const noexcept {
-	return { _impl->type };
+	return { static_cast<uint8_t>(_impl->type) };
 }
 
 buddy blist_node::as_buddy() const noexcept {
@@ -127,7 +136,7 @@ chat blist_node::as_chat() const noexcept {
 	return chat { reinterpret_cast<_PurpleChat*>(_impl) };
 }
 
-boost::variant<nullptr_t, buddy, group, contact, chat> blist_node::as_variant() const noexcept {
+boost::variant<std::nullptr_t, buddy, group, contact, chat> blist_node::as_variant() const noexcept {
 	if (get_type() == blist_node_type::buddy) {
 		return as_buddy();
 	}

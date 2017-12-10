@@ -9,7 +9,7 @@
 namespace purplepp {
 
 saved_status::saved_status(boost::string_view title, status_primitive type)
-		: _impl(purple_savedstatus_new(title.to_string().c_str(), static_cast<PurpleStatusPrimitive>(type._get_value())), purple_savedstatus_delete_by_status)
+		: _impl(purple_savedstatus_new(title.to_string().c_str(), static_cast<PurpleStatusPrimitive>(type)), purple_savedstatus_delete_by_status)
 {
 
 }
@@ -19,7 +19,7 @@ void saved_status::set_message(boost::string_view message) {
 }
 
 void saved_status::set_type(status_primitive type) {
-	purple_savedstatus_set_type(_impl.get(), static_cast<PurpleStatusPrimitive>(type._get_value()));
+	purple_savedstatus_set_type(_impl.get(), static_cast<PurpleStatusPrimitive>(type));
 }
 
 void saved_status::activate() {

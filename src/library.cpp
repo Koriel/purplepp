@@ -297,8 +297,8 @@ void library::init() {
 	impl.init();
 	impl.init_signals();
 
-	purplepp::saved_status status("Online", status_primitive::available);
-	status.activate();
+	//purplepp::saved_status status("Online", status_primitive::available);
+	//status.activate();
 }
 
 void library::add_account(std::unique_ptr<account> account) {
@@ -414,7 +414,9 @@ static void ui_init()
 			[](PurpleConversation *conv, const char *name, const char *alias, const char *message, PurpleMessageFlags flags, time_t mtime) { // write_conv
 				account::_create_conversation(conv)->write_conv(name ? name : "", alias ? alias : "", message, flags, mtime);
 			},
-			nullptr,                      /* chat_add_users       */
+			[](PurpleConversation *conv, GList *cbuddies, gboolean new_arrivals) -> void {
+
+			},                      	  /* chat_add_users       */
 			nullptr,                      /* chat_rename_user     */
 			nullptr,                      /* chat_remove_users    */
 			nullptr,                      /* chat_update_user     */
@@ -433,23 +435,45 @@ static void ui_init()
 
 	static PurpleBlistUiOps blist_uiops = {
 			nullptr, // void (*new_list)(PurpleBuddyList *list); /**< Sets UI-specific data on a buddy list. */
+
 			[](PurpleBlistNode *_node){
 				blist_node node{ _node };
-				fmt::print("[new_node] {}\n", blist_node{node});
+
+				if (node.get_type() == blist_node_type::buddy) {
+					fmt::print("[new_node] {}\n", node);
+
+					// temporary fix (kostyl')
+					auto buddy = node.as_buddy();
+
+					PurpleConversation *imconv = purple_conversation_new(
+							static_cast<PurpleConversationType>(conversation_type::im),
+							buddy.get_account()->_get_impl(),
+							buddy.get_name().to_string().c_str()
+					);
+					purple_conversation_present(imconv);
+				}
 			}, // void (*new_node)(PurpleBlistNode *node); /**< Sets UI-specific data on a node. */
+
 			[](PurpleBuddyList *list){
 				fmt::print("show blist: {}\n", (void*)list);
 			}, // void (*show)(PurpleBuddyList *list);     /**< The core will call this when it's finished doing its core stuff */
+
 			nullptr, // void (*update)(PurpleBuddyList *list, PurpleBlistNode *node);       /**< This will update a node in the buddy list. */
+
 			nullptr, // void (*remove)(PurpleBuddyList *list, PurpleBlistNode *node);       /**< This removes a node from the list */
+
 			nullptr, // void (*destroy)(PurpleBuddyList *list);  /**< When the list is destroyed, this is called to destroy the UI. */
+
 			nullptr, // void (*set_visible)(PurpleBuddyList *list, gboolean show);            /**< Hides or unhides the buddy list */
+
 			[](PurpleAccount *account, const char *username, const char *group, const char *alias){
 				fmt::print("account: {}, username: {}, group: {}, alias: {}\n", account::_get_wrapper(account)->get_username(), username, group, alias);
 			}, // void (*request_add_buddy)(PurpleAccount *account, const char *username, const char *group, const char *alias);
+
 			[](PurpleAccount *account, PurpleGroup *group, const char *alias, const char *name){
 				fmt::print("account: {}, group: {}, alias: {}, name: {}\n", account::_get_wrapper(account)->get_username(), (void*)group, alias, name);
 			}, // void (*request_add_chat)(PurpleAccount *account, PurpleGroup *group, const char *alias, const char *name);
+
 			nullptr, // void (*request_add_group)(void);
 
 			/**

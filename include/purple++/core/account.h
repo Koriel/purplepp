@@ -5,7 +5,11 @@
 #pragma once
 
 #include <purple++/detail/util.h>
+#include <purple++/core/status.h>
+
 #include <unordered_set>
+#include <vector>
+#include <mutex>
 
 struct _PurpleAccount;
 struct _PurpleConversation;
@@ -15,6 +19,9 @@ namespace purplepp {
 class connection;
 class status;
 class conversation;
+class buddy;
+
+using conversation_ptr = std::unique_ptr<conversation>;
 
 class account {
 	// members
@@ -25,6 +32,9 @@ class account {
 	// TODO: make thread-safe (weak_ptr)
 	// TODO: make map: name -> conversation
 	//std::unordered_set<conversation*> _conversations;
+
+	mutable std::mutex _any_data_mutex;
+	mutable void* _any_data;
 
 	void set_connection(std::unique_ptr<connection> connection);
 	void set_factory(std::function<std::unique_ptr<conversation>()> conv_factory);
@@ -37,14 +47,18 @@ public:
 	void set_remember_password(bool value);
 	void set_enabled(boost::string_view ui, bool value);
 	void connect();
+	void set_status(status_primitive status);
 
 	// base methods
 	connection& get_connection();
 	boost::string_view get_username();
+	boost::string_view get_protocol() const;
 
 	bool is_connected() const;
 
-	void apply_to_conversation(boost::string_view name, std::function<void(conversation&)> cb) const;
+	void apply_to_conversation(boost::string_view name, callback_t<conversation_ptr> cb) const;
+	void apply_to_conversations(callback_t<std::vector<conversation_ptr>&> cb) const;
+	void apply_to_buddy(boost::string_view name, callback_t<buddy&> cb);
 
 	// for C-wrapping
 	_PurpleAccount* _get_impl() const;
@@ -59,13 +73,13 @@ public:
 	/** A buddy who is already on this account's buddy list added this account
 	 *  to their buddy list.
 	 */
-	virtual void notify_added(const char *remote_user, const char *id, const char *alias, const char *message) = 0;
+	virtual void notify_added(const char *remote_user, const char *id, const char *alias, const char *message) {};
 
 	/** This account's status changed. */
-	virtual void status_changed(const status& status) = 0;
+	virtual void status_changed(const status& status) {};
 
 	/** Someone we don't have on our list added us; prompt to add them. */
-	virtual void request_add(const char *remote_user, const char *id, const char *alias, const char *message) = 0;
+	virtual void request_add(const char *remote_user, const char *id, const char *alias, const char *message) {};
 
 	/** Prompt for authorization when someone adds this account to their buddy
 	 * list.  To authorize them to see this account's presence, call \a
@@ -76,12 +90,12 @@ public:
 							   //PurpleAccountRequestAuthorizationCb authorize_cb,
 							   //PurpleAccountRequestAuthorizationCb deny_cb,
 							   void *user_data
-	) = 0;
+	) { return nullptr; };
 
 	/** Close a pending request for authorization.  \a ui_handle is a handle
 	 *  as returned by #request_authorize.
 	 */
-	virtual void close_account_request(void *ui_handle) = 0;
+	virtual void close_account_request(void *ui_handle) {};
 
 	PURPLEPP_NON_COPYABLE_NON_MOVABLE(account);
 };
@@ -98,7 +112,7 @@ public:
 };
 
 template <class Account, class Connection, class Conversation, class... Args>
-static std::unique_ptr<account> make_account(Args&& ...args) {
+std::unique_ptr<account> make_account(Args&& ...args) {
 	// check invariants
 	static_assert(std::is_base_of<account, Account>::value, "Account must be derived from purple::account");
 	static_assert(std::is_base_of<connection, Connection>::value, "Connection must be derived from purple::connection");

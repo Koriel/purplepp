@@ -8,24 +8,20 @@
 
 namespace purplepp {
 
-const status_primitive status_primitive::unset(PURPLE_STATUS_UNSET);
-const status_primitive status_primitive::offline(PURPLE_STATUS_OFFLINE);
-const status_primitive status_primitive::available(PURPLE_STATUS_AVAILABLE);
-const status_primitive status_primitive::unavailable(PURPLE_STATUS_UNAVAILABLE);
-const status_primitive status_primitive::invisible(PURPLE_STATUS_INVISIBLE);
-const status_primitive status_primitive::away(PURPLE_STATUS_AWAY);
-const status_primitive status_primitive::extended_away(PURPLE_STATUS_EXTENDED_AWAY);
-const status_primitive status_primitive::mobile(PURPLE_STATUS_MOBILE);
-const status_primitive status_primitive::tune(PURPLE_STATUS_TUNE);
-const status_primitive status_primitive::mood(PURPLE_STATUS_MOOD);
-const status_primitive status_primitive::NUMBER(PURPLE_STATUS_NUM_PRIMITIVES);
-
-uint8_t status_primitive::_get_value() const {
-	return _value;
-}
+PURPLEPP_ENUM_ASSERT_CORRECT(status_primitive::unset, PURPLE_STATUS_UNSET);
+PURPLEPP_ENUM_ASSERT_CORRECT(status_primitive::offline, PURPLE_STATUS_OFFLINE);
+PURPLEPP_ENUM_ASSERT_CORRECT(status_primitive::available, PURPLE_STATUS_AVAILABLE);
+PURPLEPP_ENUM_ASSERT_CORRECT(status_primitive::unavailable, PURPLE_STATUS_UNAVAILABLE);
+PURPLEPP_ENUM_ASSERT_CORRECT(status_primitive::invisible, PURPLE_STATUS_INVISIBLE);
+PURPLEPP_ENUM_ASSERT_CORRECT(status_primitive::away, PURPLE_STATUS_AWAY);
+PURPLEPP_ENUM_ASSERT_CORRECT(status_primitive::extended_away, PURPLE_STATUS_EXTENDED_AWAY);
+PURPLEPP_ENUM_ASSERT_CORRECT(status_primitive::mobile, PURPLE_STATUS_MOBILE);
+PURPLEPP_ENUM_ASSERT_CORRECT(status_primitive::tune, PURPLE_STATUS_TUNE);
+PURPLEPP_ENUM_ASSERT_CORRECT(status_primitive::mood, PURPLE_STATUS_MOOD);
+PURPLEPP_ENUM_ASSERT_CORRECT(status_primitive::NUMBER, PURPLE_STATUS_NUM_PRIMITIVES);
 
 std::ostream& operator<<(std::ostream& os, status_primitive prim) {
-	switch (prim._get_value()) {
+	switch (detail::to_underlying(prim)) {
 		case PURPLE_STATUS_UNSET: return os << "unset";
 		case PURPLE_STATUS_OFFLINE: return os << "offline";
 		case PURPLE_STATUS_AVAILABLE: return os << "available";
@@ -36,28 +32,29 @@ std::ostream& operator<<(std::ostream& os, status_primitive prim) {
 		case PURPLE_STATUS_MOBILE: return os << "mobile";
 		case PURPLE_STATUS_TUNE: return os << "tune";
 		case PURPLE_STATUS_MOOD: return os << "mood";
-		default: return os << "<unknown(" << prim._get_value() << ")>";
+		default: return os << "<unknown(" << detail::to_underlying(prim) << ")>";
 	}
 }
 
-/* status_type */
-status_type::status_type(_PurpleStatusType* impl) : _impl(impl) {
-
-}
+/** status_type */
 
 status_primitive status_type::get_primitive() const {
-	return static_cast<uint8_t>(purple_status_type_get_primitive(_impl));
+	return static_cast<status_primitive>(purple_status_type_get_primitive(_impl));
 }
 
-/* status */
-
-status::status(_PurpleStatus* impl) : _impl(impl) {
-
-}
+/** status */
 
 status_type status::get_type() const {
 	return purple_status_get_type(_impl);
 }
 
+status_primitive status::get_primitive() const {
+	return get_type().get_primitive();
+}
+
+/** presence */
+status presence::get_active_status() const {
+	return { purple_presence_get_active_status(_impl) };
+}
 
 }

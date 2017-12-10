@@ -10,4 +10,5 @@
 #include <purple++/core/connection.h>
 #include <purple++/core/account.h>
 #include <purple++/core/saved_status.h>
+#include <purple++/core/blist.h>
 #include <purple++/detail/util.h>

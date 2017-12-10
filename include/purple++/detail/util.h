@@ -65,7 +65,25 @@ std::thread::id get_loop_thread_id();
 
 boost::string_view to_view(const char* ptr);
 
+template <class E>
+auto to_underlying(E e) -> typename std::underlying_type<E>::type {
+	return static_cast<typename std::underlying_type<E>::type>(e);
 }
+
+/*template <class Obj, class F, class Tuple, std::size_t... I>
+constexpr decltype(auto) apply_method_impl(Obj&& o, F&& f, Tuple&& t, std::index_sequence<I...> )
+{
+	return (std::forward<Obj>(o).*std::forward<F>(f))(std::get<I>(std::forward<Tuple>(t))...);
+}*/
+
+}
+
+/*template <class Obj, class F, class Tuple>
+constexpr decltype(auto) apply_method(Obj&& o, F&& f, Tuple&& t)
+{
+	return detail::apply_method_impl(std::forward<Obj>(o), std::forward<F>(f), std::forward<Tuple>(t),
+							 std::make_index_sequence<std::tuple_size<std::decay_t<Tuple>>::value>{});
+}*/
 
 // owning implementation
 template <class Impl>
@@ -76,6 +94,9 @@ impl_ptr<Impl> make_impl_ptr(Impl* impl, void(*deleter)(Impl*)) {
 	return impl_ptr<Impl>(impl, deleter);
 }
 
+template <class... Args>
+using callback_t = std::function<void(Args...)>;
+
 #define PURPLEPP_NON_OWNING_WRAPPER(Wrapper, Impl) \
 private: \
 	Impl* _impl; \
@@ -85,6 +106,20 @@ public: \
 		PURPLEPP_ASSERT_IS_LOOP_THREAD();\
 		return _impl;\
 	}
+
+
+#define PURPLEPP_ENUM_ASSERT_CORRECT(enumclass, cenum) static_assert(static_cast<std::underlying_type<decltype(enumclass)>::type>(enumclass) == cenum, "Check it!")
+
+/*
+#define PURPLEPP_DETAIL_FWD(x) std::forward<decltype(x)>(x)
+#define PURPLEPP_DETAIL_GENERATE_LAMBDA_BODY(...) noexcept(noexcept(__VA_ARGS__)) -> decltype(__VA_ARGS__) { return __VA_ARGS__; }
+
+
+	noexcept(noexcept(apply_method(PURPLEPP_DETAIL_FWD(obj), &decltype(obj)::method, PURPLEPP_DETAIL_FWD(args_tuple)))) \
+            -> decltype(apply_method(PURPLEPP_DETAIL_FWD(obj), &decltype(obj)::method, PURPLEPP_DETAIL_FWD(args_tuple))) { \
+                return apply_method(PURPLEPP_DETAIL_FWD(obj), &decltype(obj)::method, PURPLEPP_DETAIL_FWD(args_tuple)); \
+            }; \
+    }*/
 
 
 }

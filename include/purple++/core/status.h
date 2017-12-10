@@ -8,48 +8,44 @@
 
 struct _PurpleStatus;
 struct _PurpleStatusType;
+struct _PurplePresence;
 
 namespace purplepp {
 
 // instead of enum
-class status_primitive {
-	uint8_t _value;
-public:
-	/* implicit */ status_primitive(uint8_t value) : _value(value) {}
-
-	static const status_primitive unset;
-	static const status_primitive offline;
-	static const status_primitive available;
-	static const status_primitive unavailable;
-	static const status_primitive invisible;
-	static const status_primitive away;
-	static const status_primitive extended_away;
-	static const status_primitive mobile;
-	static const status_primitive tune;
-	static const status_primitive mood;
-	static const status_primitive NUMBER;
-
-	uint8_t _get_value() const;
-
-	friend std::ostream& operator<< (std::ostream& os, status_primitive prim);
+enum class status_primitive : uint8_t {
+	unset = 0,
+	offline,
+	available,
+	unavailable,
+	invisible,
+	away,
+	extended_away,
+	mobile,
+	tune,
+	mood,
+	NUMBER
 };
 
-class status_type {
-	// non-owning
-	_PurpleStatusType* _impl;
+std::ostream& operator<< (std::ostream& os, status_primitive prim);
 
-public:
-	/* implicit */ status_type(_PurpleStatusType* impl);
+class status_type {
+	PURPLEPP_NON_OWNING_WRAPPER(status_type, _PurpleStatusType);
+
 	status_primitive get_primitive() const;
 };
 
 class status {
-	// non-owning
-	_PurpleStatus* _impl;
+	PURPLEPP_NON_OWNING_WRAPPER(status, _PurpleStatus);
 
-public:
-	/* implicit */ status(_PurpleStatus* impl);
 	status_type get_type() const;
+	status_primitive get_primitive() const;
+};
+
+class presence {
+	PURPLEPP_NON_OWNING_WRAPPER(presence, _PurplePresence);
+
+	status get_active_status() const;
 };
 
 }

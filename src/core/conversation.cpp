@@ -3,16 +3,19 @@
 //
 
 #include <purple++/core/conversation.h>
-#include <purple++/detail/util.h>
+#include <purple++/core/account.h>
+#include <purple++/core/status.h>
+#include <purple++/core/blist.h>
+#include <purple++/detail/internal.h>
+#include <purple++/detail/lambda_visitor.h>
+#include <purple++/library.h>
 
 #include <libpurple/conversation.h>
 
 #include <cassert>
 #include <fmt/ostream.h>
-#include <conversation.h>
 #include <fmt/printf.h>
-#include <purple++/core/account.h>
-#include <purple++/library.h>
+#include <conversation.h>
 
 namespace purplepp {
 
@@ -88,34 +91,47 @@ bool message_flags::is_no_linkify() const 	{ return (_value & no_linkify._get_va
 bool message_flags::is_invisible() const 	{ return (_value & invisible._get_value()) != 0; }
 bool message_flags::is_remote_send() const 	{ return (_value & remote_send._get_value()) != 0; }
 
-/** conversation_type */
+/** conv_message */
+time_t conv_message::get_timestamp() const {
+	PURPLEPP_ASSERT_IS_LOOP_THREAD();
 
-const conversation_type conversation_type::unknown	( PURPLE_CONV_TYPE_UNKNOWN	);
-const conversation_type conversation_type::im		( PURPLE_CONV_TYPE_IM		);
-const conversation_type conversation_type::chat		( PURPLE_CONV_TYPE_CHAT		);
-const conversation_type conversation_type::misc		( PURPLE_CONV_TYPE_MISC		);
-const conversation_type conversation_type::any		( PURPLE_CONV_TYPE_ANY		);
-
-uint8_t conversation_type::_get_value() const {
-	return _value;
+	return _impl->when;
 }
 
+boost::string_view conv_message::get_text() const {
+	PURPLEPP_ASSERT_IS_LOOP_THREAD();
+
+	return detail::to_view(_impl->what);
+}
+
+message_flags conv_message::get_flags() const {
+	return _impl->flags;
+}
+
+boost::string_view conv_message::get_author() const {
+	return detail::to_view(_impl->who);
+}
+
+/** conversation_type */
+
+PURPLEPP_ENUM_ASSERT_CORRECT(conversation_type::unknown, PURPLE_CONV_TYPE_UNKNOWN);
+PURPLEPP_ENUM_ASSERT_CORRECT(conversation_type::im, PURPLE_CONV_TYPE_IM);
+PURPLEPP_ENUM_ASSERT_CORRECT(conversation_type::chat, PURPLE_CONV_TYPE_CHAT);
+PURPLEPP_ENUM_ASSERT_CORRECT(conversation_type::misc, PURPLE_CONV_TYPE_MISC);
+PURPLEPP_ENUM_ASSERT_CORRECT(conversation_type::any, PURPLE_CONV_TYPE_ANY);
+
 std::ostream& operator<<(std::ostream& os, conversation_type type) {
-	switch (type._get_value()) {
+	switch (static_cast<uint8_t>(type)) {
 		case PURPLE_CONV_TYPE_UNKNOWN:	return os << "unknown";
 		case PURPLE_CONV_TYPE_IM:		return os << "im";
 		case PURPLE_CONV_TYPE_CHAT:		return os << "chat";
 		case PURPLE_CONV_TYPE_MISC:		return os << "misc";
 		case PURPLE_CONV_TYPE_ANY:		return os << "any";
-		default:						return os << "<unknown(" << type._get_value() << ")>";
+		default:						return os << "<unknown(" << static_cast<uint8_t>(type) << ")>";
 	}
 }
 
 /** conv_im */
-
-conv_im::conv_im(_PurpleConvIm* impl) : _impl(impl) {
-
-}
 
 void conv_im::send(boost::string_view message) {
 	library::add_task([=] {
@@ -124,17 +140,71 @@ void conv_im::send(boost::string_view message) {
 	});
 }
 
-/** conv_chat */
+double conv_im::get_online_percent() const {
+	bool is_online = false;
 
-conv_chat::conv_chat(_PurpleConvChat* impl) : _impl(impl) {
+	if (_impl->icon == nullptr) return 0.1;
 
+	auto name = purple_buddy_icon_get_username(_impl->icon);
+	account::_get_wrapper(_impl->conv->account)->apply_to_buddy(detail::to_view(name), [&](buddy& b){
+		is_online = b.get_presence().get_active_status().get_primitive() != status_primitive::offline;
+	});
+	return is_online ? 1.0 : 0.5;
 }
+
+void conv_im::apply_to_buddy(callback_t<purplepp::buddy&> cb) const {
+	if (_impl->icon == nullptr) return;
+	auto name = purple_buddy_icon_get_username(_impl->icon);
+	account::_get_wrapper(_impl->conv->account)->apply_to_buddy(detail::to_view(name), cb);
+}
+
+/** conv_chat */
 
 void conv_chat::send(boost::string_view message) {
 	library::add_task([=] {
 		PURPLEPP_ASSERT_IS_LOOP_THREAD();
 		purple_conv_chat_send(_impl, message.to_string().c_str());
 	});
+}
+
+double conv_chat::get_online_percent() const {
+	PURPLEPP_ASSERT_IS_LOOP_THREAD();
+
+	size_t total = 0;
+	size_t online = 0;
+	for_each_buddy([&](buddy& buddy) {
+		auto status = buddy.get_presence().get_active_status().get_primitive();
+		total++;
+		if (status != status_primitive::offline) online++;
+	});
+
+	return static_cast<double>(online) / total;
+}
+
+void conv_chat::for_each_chat_buddy(callback_t<conv_chat_buddy&> cb) const {
+	PURPLEPP_ASSERT_IS_LOOP_THREAD();
+
+	for (auto&& p : detail::ghashtable<char*, PurpleConvChatBuddy*>(_impl->users)) {
+		conv_chat_buddy buddy{ p.second };
+		cb(buddy);
+	}
+}
+
+void conv_chat::for_each_buddy(callback_t<purplepp::buddy&> cb) const {
+	PURPLEPP_ASSERT_IS_LOOP_THREAD();
+
+	for_each_chat_buddy([&](conv_chat_buddy& buddy){
+		account::_get_wrapper(_impl->conv->account)->apply_to_buddy(buddy.get_name(), cb);
+	});
+}
+
+/** conv_chat_buddy */
+conv_chat_buddy::flags conv_chat_buddy::get_flags() const {
+	return static_cast<flags>(_impl->flags);
+}
+
+boost::string_view conv_chat_buddy::get_name() const {
+	return detail::to_view(_impl->name);
 }
 
 /** conversation */
@@ -144,6 +214,12 @@ conversation::conversation() {
 
 	_impl = detail::thread_local_cache<PurpleConversation*, conversation>::get();
 	_impl->ui_data = this;
+
+	fmt::print("_impl: {}, _ui_data: {}\n", (void*)_impl, (void*)_impl->ui_data);
+}
+
+conversation::~conversation() noexcept {
+	_impl->ui_data = nullptr;
 }
 
 boost::string_view conversation::get_name() const {
@@ -155,7 +231,7 @@ boost::string_view conversation::get_name() const {
 conversation_type conversation::get_type() const {
 	PURPLEPP_ASSERT_IS_LOOP_THREAD();
 
-	return _impl->type;
+	return static_cast<conversation_type>(_impl->type);
 }
 
 account* conversation::get_account() const {
@@ -164,30 +240,49 @@ account* conversation::get_account() const {
 	return account::_get_wrapper(_impl->account);
 }
 
-void conversation::send(boost::string_view message) {
-	PURPLEPP_ASSERT_IS_LOOP_THREAD();
+conv_chat conversation::as_chat() const noexcept {
+	return conv_chat{ _impl->u.chat };
+}
 
+conv_im conversation::as_im() const noexcept {
+	return conv_im{ _impl->u.im };
+}
+
+boost::variant<boost::blank, conv_chat, conv_im> conversation::as_variant() const noexcept {
 	switch (_impl->type) {
-		case PURPLE_CONV_TYPE_CHAT:
-			conv_chat{ _impl->u.chat }.send(message);
-			return;
-
-		case PURPLE_CONV_TYPE_IM:
-			conv_im{ _impl->u.im }.send(message);
-			return;
-
-		default:
-			fmt::print(stderr, "Unable to send message to chat with type = {}, message = {}\n", get_type(), message);
-			return;
+		case PURPLE_CONV_TYPE_CHAT:	return as_chat();
+		case PURPLE_CONV_TYPE_IM:	return as_im();
+		default:					return boost::blank{};
 	}
 }
 
-conversation* conversation::_get_wrapper(_PurpleConversation* impl) {
+void conversation::send(boost::string_view message) {
+	PURPLEPP_ASSERT_IS_LOOP_THREAD();
+
+	detail::apply_lambda_visitor(as_variant(), [=](auto&& c) { c.send(message); });
+}
+
+void conversation::for_each_message(callback_t<conv_message&> cb) {
+	PURPLEPP_ASSERT_IS_LOOP_THREAD();
+
+	for (auto ptr : detail::glist<PurpleConvMessage*>(purple_conversation_get_message_history(_impl))) {
+		conv_message msg{ ptr };
+		cb(msg);
+	}
+}
+
+double conversation::get_online_percent() const {
+	PURPLEPP_ASSERT_IS_LOOP_THREAD();
+
+	return detail::apply_lambda_visitor<double>(as_variant(), [=](auto&& c) { return c.get_online_percent(); }, [](boost::blank) { return 0.0; });
+}
+
+/*conversation* conversation::_get_wrapper(_PurpleConversation* impl) {
 	PURPLEPP_ASSERT_IS_LOOP_THREAD();
 
 	assert(impl->ui_data);
 	return (conversation*)impl->ui_data;
-}
+}*/
 
 void simple_conversation::write_conv(boost::string_view who, boost::string_view alias, boost::string_view message, message_flags flags, time_t mtime) {
 	PURPLEPP_ASSERT_IS_LOOP_THREAD();

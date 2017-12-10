@@ -14,19 +14,21 @@ add_library(purplepp
         core/conversation.cpp
         core/blist.cpp
         detail/util.cpp
+        detail/internal.cpp
 
         # Headers for IDE
-        "${PURPLEPP_INCLUDE_DIRS}/purple++/purple++.h"
-        #"${PURPLEPP_INCLUDE_DIRS}/purple++/test.h"
-        "${PURPLEPP_INCLUDE_DIRS}/purple++/library.h"
-        "${PURPLEPP_INCLUDE_DIRS}/purple++/core/connection.h"
-        "${PURPLEPP_INCLUDE_DIRS}/purple++/core/account.h"
-        "${PURPLEPP_INCLUDE_DIRS}/purple++/core/status.h"
-        "${PURPLEPP_INCLUDE_DIRS}/purple++/core/saved_status.h"
-        "${PURPLEPP_INCLUDE_DIRS}/purple++/core/conversation.h"
-        "${PURPLEPP_INCLUDE_DIRS}/purple++/core/blist.h"
-        "${PURPLEPP_INCLUDE_DIRS}/purple++/detail/util.h"
-
+        "${PURPLEPP_INCLUDE_DIR}/purple++/purple++.h"
+        #"${PURPLEPP_INCLUDE_DIR}/purple++/test.h"
+        "${PURPLEPP_INCLUDE_DIR}/purple++/library.h"
+        "${PURPLEPP_INCLUDE_DIR}/purple++/core/connection.h"
+        "${PURPLEPP_INCLUDE_DIR}/purple++/core/account.h"
+        "${PURPLEPP_INCLUDE_DIR}/purple++/core/status.h"
+        "${PURPLEPP_INCLUDE_DIR}/purple++/core/saved_status.h"
+        "${PURPLEPP_INCLUDE_DIR}/purple++/core/conversation.h"
+        "${PURPLEPP_INCLUDE_DIR}/purple++/core/blist.h"
+        "${PURPLEPP_INCLUDE_DIR}/purple++/detail/util.h"
+        "${PURPLEPP_INCLUDE_DIR}/purple++/detail/internal.h"
+        "${PURPLEPP_INCLUDE_DIR}/purple++/detail/lambda_visitor.h"
         )
 
 find_path(PURPLE_INCLUDE_DIR NAMES purple.h PATH_SUFFIXES libpurple)
@@ -61,7 +63,7 @@ target_include_directories(purplepp PRIVATE
 
 # C++ libs
 target_include_directories(purplepp PRIVATE
-        ${PURPLEPP_INCLUDE_DIRS}
+        ${PURPLEPP_INCLUDE_DIR}
         ${FMT_INCLUDE_DIRS}
         )
 target_link_libraries(purplepp

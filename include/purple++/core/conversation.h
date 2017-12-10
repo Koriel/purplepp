@@ -5,16 +5,24 @@
 #pragma once
 
 #include <purple++/detail/util.h>
+#include <boost/variant.hpp>
+#include <boost/blank.hpp>
 
 struct _PurpleConversation;
 struct _PurpleConvIm;
 struct _PurpleConvChat;
+struct _PurpleConvMessage;
+struct _PurpleConvChatBuddy;
 
 namespace purplepp {
 
 class account;
+class buddy;
+class conv_chat_buddy;
 
 // instead of enum
+
+// TODO: move to conv_message
 class message_flags {
 	uint32_t _value;
 public:
@@ -59,44 +67,73 @@ public:
 	uint32_t _get_value() const;
 };
 
-// instead of enum
-class conversation_type {
-	uint8_t _value;
-public:
-	/* implicit */ conversation_type(uint8_t value) : _value(value) {}
+class conv_message {
+	PURPLEPP_NON_OWNING_WRAPPER(conv_message, _PurpleConvMessage);
 
-	static const conversation_type unknown;
-	static const conversation_type im;
-	static const conversation_type chat;
-	static const conversation_type misc;
-	static const conversation_type any;
-
-	uint8_t _get_value() const;
-
-	friend std::ostream& operator<< (std::ostream& os, conversation_type type);
+	time_t get_timestamp() const;
+	boost::string_view get_text() const;
+	message_flags get_flags() const;
+	boost::string_view get_author() const;
 };
 
-class conv_im {
-	// non-owning
-	_PurpleConvIm* _impl;
+// instead of enum
+enum class conversation_type : uint8_t {
+	unknown, im, chat, misc, any
+};
+std::ostream& operator<< (std::ostream& os, conversation_type);
 
-public:
-	/* implicit */ conv_im(_PurpleConvIm* impl);
+class conv_im {
+	PURPLEPP_NON_OWNING_WRAPPER(conv_im, _PurpleConvIm);
+
 	~conv_im() noexcept = default;
 
 	void send(boost::string_view message);
+	double get_online_percent() const;
+
+	void apply_to_buddy(callback_t<buddy&> cb) const;
 };
 
 class conv_chat {
-	// non-owning
-	_PurpleConvChat* _impl;
-
-public:
-	/* implicit */ conv_chat(_PurpleConvChat* impl);
+	PURPLEPP_NON_OWNING_WRAPPER(conv_chat, _PurpleConvChat);
 
 	void send(boost::string_view message);
+	double get_online_percent() const;
+
+	void for_each_chat_buddy(callback_t<conv_chat_buddy&> cb) const;
+	void for_each_buddy(callback_t<buddy&> cb) const;
 };
 
+/** PurpleConvChatBuddy*/
+
+class conv_chat_buddy {
+	PURPLEPP_NON_OWNING_WRAPPER(conv_chat_buddy, _PurpleConvChatBuddy);
+
+	enum class flags : uint8_t {
+		none          = 0x0000, /**< No flags                     */
+		voice         = 0x0001, /**< Voiced user or "Participant" */
+		halfop        = 0x0002, /**< Half-op                      */
+		op            = 0x0004, /**< Channel Op or Moderator      */
+		founder       = 0x0008, /**< Channel Founder              */
+		typing        = 0x0010, /**< Currently typing             */
+		away          = 0x0020  /**< Currently away. @since 2.8.0 */
+	};
+
+	flags get_flags() const;
+
+	bool is_flag_set(flags flag) const {
+		return (static_cast<uint8_t>(get_flags()) & static_cast<uint8_t>(flag)) != 0;
+	}
+	bool is_voice() 	const	{ return is_flag_set(flags::voice); }
+	bool is_halfop() 	const	{ return is_flag_set(flags::halfop); }
+	bool is_op() 		const	{ return is_flag_set(flags::op); }
+	bool is_founder() 	const	{ return is_flag_set(flags::founder); }
+	bool is_typing() 	const	{ return is_flag_set(flags::typing); }
+	bool is_away() 		const	{ return is_flag_set(flags::away); }
+
+	boost::string_view get_name() const;
+};
+
+/** _PurpleConversation */
 class conversation {
 	// non-owning
 	_PurpleConversation* _impl;
@@ -105,19 +142,28 @@ protected:
 	conversation();
 
 public:
-	virtual ~conversation() = default;
+	virtual ~conversation() noexcept;
 
 	// base API
 	boost::string_view get_name() const;
 	conversation_type get_type() const;
 	account* get_account() const;
+
+	conv_chat as_chat() const noexcept;
+	conv_im as_im() const noexcept;
+	boost::variant<boost::blank, conv_chat, conv_im> as_variant() const noexcept;
+
 	void send(boost::string_view message);
 
+	void for_each_message(callback_t<conv_message&> cb);
+
+	double get_online_percent() const;
+
 	// internal
-	static conversation* _get_wrapper(_PurpleConversation* impl);
+	//static conversation* _get_wrapper(_PurpleConversation* impl); // use account::_create_conversation instead!
 
 	// ui_ops
-	virtual void write_conv(boost::string_view who, boost::string_view alias, boost::string_view message, message_flags flags, time_t mtime) = 0;
+	virtual void write_conv(boost::string_view who, boost::string_view alias, boost::string_view message, message_flags flags, time_t mtime) {};
 
 	PURPLEPP_NON_COPYABLE_NON_MOVABLE(conversation);
 };
