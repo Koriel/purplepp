@@ -7,6 +7,7 @@
 #include <memory>
 #include <boost/utility/string_view.hpp>
 #include <purple++/detail/util.h>
+#include <vector>
 
 namespace purplepp {
 
@@ -26,6 +27,9 @@ public:
 	static account* find_account(boost::string_view login);
 
 	static std::thread::id get_loop_thread_id();
+
+	static bool has_protocol(boost::string_view protocol);
+	static std::vector<std::string> get_protocols_info();
 
 	PURPLEPP_STATIC_CLASS(library);
 };

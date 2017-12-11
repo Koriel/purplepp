@@ -10,6 +10,7 @@
 #include <purple++/core/conversation.h>
 #include <purple++/core/blist.h>
 #include <purple++/detail/util.h>
+#include <purple++/detail/internal.h>
 #include <fmt/printf.h>
 
 #include <libpurple/purple.h>
@@ -304,6 +305,23 @@ void library::init() {
 void library::add_account(std::unique_ptr<account> account) {
 	auto& impl = get_library_impl();
 
+	if (!library::has_protocol(account->get_protocol())) {
+		auto protocols = detail::glist<PurplePlugin*>(purple_plugins_get_protocols());
+
+		fmt::MemoryWriter err;
+		err << u8"Unknown protocol name. Available protocols:\n";
+		size_t i = 0;
+		for (auto& proto : protocols) {
+			if (!proto || !proto->info) {
+				continue;
+			}
+			auto info = proto->info;
+			err << fmt::pad(++i, 3, ' ') << ". ";
+			err.write("'{}' - {} {} - {}\n", info->id, info->name, info->version, info->description);
+		}
+		throw std::runtime_error(err.str());
+	}
+
 	account->set_enabled(UI_ID, true);
 	auto username = account->get_username().to_string();
 	impl.accounts[std::move(username)] = std::move(account);
@@ -327,6 +345,14 @@ void library::add_task(std::function<void()> task) {
 
 void library::set_debug(bool enabled) {
 	get_library_impl().debug_enabled = enabled;
+	if (!enabled) {
+
+		auto _dummy = [](const gchar *log_domain, GLogLevelFlags log_level, const gchar *message, gpointer user_data) {
+			/* Dummy does nothing */
+		};
+
+		g_log_set_handler(G_LOG_DOMAIN, static_cast<GLogLevelFlags>(~G_LOG_FLAG_RECURSION), _dummy, nullptr);
+	}
 }
 
 account* library::find_account(boost::string_view login) {
@@ -335,6 +361,26 @@ account* library::find_account(boost::string_view login) {
 
 std::thread::id library::get_loop_thread_id() {
 	return get_library_impl().loop_thread_id;
+}
+
+bool library::has_protocol(boost::string_view protocol) {
+	auto plugins = detail::glist<PurplePlugin*>(purple_plugins_get_protocols());
+	return std::any_of(plugins.begin(), plugins.end(), [&](PurplePlugin* plugin){
+		return plugin && plugin->info && plugin->info->id == protocol;
+	});
+}
+
+std::vector<std::string> library::get_protocols_info() {
+	std::vector<std::string> ret;
+
+	auto proto_list = purple_plugins_get_protocols();
+	for (auto plugin : detail::glist<PurplePlugin*>(proto_list)) {
+		PurplePluginInfo *info = plugin->info;
+		if (info && info->name) {
+			ret.push_back(fmt::format("{} {} - {}", info->name, info->version, info->description));
+		}
+	}
+	return ret;
 }
 
 static void ui_init()
